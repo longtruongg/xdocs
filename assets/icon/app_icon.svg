@@ -1,0 +1,77 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#123B3C"/>
+      <stop offset="100%" stop-color="#081E1F"/>
+    </linearGradient>
+    <linearGradient id="pageLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4E8C8"/>
+      <stop offset="100%" stop-color="#E4CE9C"/>
+    </linearGradient>
+    <linearGradient id="pageRight" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F7EFDA"/>
+      <stop offset="100%" stop-color="#EAD8AE"/>
+    </linearGradient>
+    <linearGradient id="seal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C13B2E"/>
+      <stop offset="100%" stop-color="#9A2A20"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background squircle -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- faint concentric arcs, suggesting a page turning / ripple of translation -->
+  <circle cx="256" cy="256" r="170" fill="none" stroke="#C9A227" stroke-opacity="0.14" stroke-width="2"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#C9A227" stroke-opacity="0.09" stroke-width="2"/>
+
+  <!-- open book -->
+  <g>
+    <!-- left page -->
+    <path d="M256 168
+             C 200 148, 138 152, 100 176
+             L 100 344
+             C 138 320, 200 316, 256 336
+             Z"
+          fill="url(#pageLeft)"/>
+    <!-- right page -->
+    <path d="M256 168
+             C 312 148, 374 152, 412 176
+             L 412 344
+             C 374 320, 312 316, 256 336
+             Z"
+          fill="url(#pageRight)"/>
+
+    <!-- spine shadow -->
+    <path d="M256 168 L256 336" stroke="#4A3A22" stroke-opacity="0.35" stroke-width="4"/>
+
+    <!-- text lines: left page (Han strokes, abstracted) -->
+    <g stroke="#7A6238" stroke-width="5" stroke-linecap="round" opacity="0.75">
+      <line x1="132" y1="206" x2="176" y2="212"/>
+      <line x1="128" y1="228" x2="184" y2="236"/>
+      <line x1="132" y1="250" x2="176" y2="257"/>
+      <line x1="128" y1="272" x2="188" y2="281"/>
+    </g>
+
+    <!-- text lines: right page (Latin script, abstracted) -->
+    <g stroke="#8A6F3C" stroke-width="5" stroke-linecap="round" opacity="0.75">
+      <line x1="336" y1="212" x2="380" y2="206"/>
+      <line x1="328" y1="236" x2="384" y2="228"/>
+      <line x1="336" y1="257" x2="380" y2="250"/>
+      <line x1="324" y1="281" x2="384" y2="272"/>
+    </g>
+  </g>
+
+  <!-- seal stamp, overlapping the book's lower-right corner -->
+  <g transform="translate(318 300)">
+    <rect x="0" y="0" width="92" height="92" rx="14"
+          fill="url(#seal)" transform="rotate(-8 46 46)"/>
+    <rect x="14" y="14" width="64" height="64" rx="6" fill="none"
+          stroke="#F4E8C8" stroke-width="3" stroke-opacity="0.85"
+          transform="rotate(-8 46 46)"/>
+    <path d="M30 60 L38 34 L46 60 M33 50 L43 50 M54 34 L54 60 M54 34 L64 34 M54 47 L62 47"
+          transform="rotate(-8 46 46)"
+          fill="none" stroke="#F4E8C8" stroke-width="4"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

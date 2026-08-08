@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:xdocs/drawers/app_drawer.dart';
 import 'package:xdocs/service/service.dart';
 
 import '../models/book.dart';
@@ -64,32 +65,7 @@ class BookListScreen extends ConsumerWidget {
       ),
 
       backgroundColor: theme.colorScheme.surface,
-      drawer: NavigationDrawer(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (int index) {
-          // Closes the drawer after selection
-          Navigator.pop(context);
-        },
-        children: const <Widget>[
-          Padding(
-            padding: EdgeInsets.fromLTRB(28, 16, 16, 10),
-            child: Text(
-              'Header',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-          NavigationDrawerDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: Text('Home'),
-          ),
-          NavigationDrawerDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: Text('Settings'),
-          ),
-        ],
-      ),
+      drawer: AppDrawer(),
     );
   }
 }
@@ -228,7 +204,8 @@ class _CoverThumb extends StatelessWidget {
                   'User-Agent':
                       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
                       '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                  'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                  'Accept':
+                      'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
                 },
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;
