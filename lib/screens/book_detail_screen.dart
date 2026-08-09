@@ -5,10 +5,11 @@ import 'package:xdocs/service/service.dart';
 import '../models/book.dart';
 import 'book_list_screen.dart';
 import 'chapter_reader_screen.dart';
+import 'info_widget.dart';
 
 /// How many chapters per range tab (e.g. 1-50, 51-100, …).
 /// Larger pages = fewer chips = smoother open animation on big books.
-const int kChapterPageSize = 50;
+const int kChapterPageSize = 30;
 
 class BookDetailScreen extends ConsumerStatefulWidget {
   const BookDetailScreen({super.key, required this.book});
@@ -188,6 +189,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
         ],
       ),
       body: CustomScrollView(
+        shrinkWrap: true,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
@@ -261,16 +263,19 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _InfoRow(label: 'Tên truyện', value: book.title),
+                  InfoWidget(label: 'Tên truyện', value: book.title),
                   const SizedBox(height: 4),
-                  _InfoRow(
+                  InfoWidget(
                     label: 'Tác giả',
                     value: book.author.trim().isEmpty ? '—' : book.author,
                   ),
                   const SizedBox(height: 4),
-                  _InfoRow(label: 'Số chương', value: '${book.totalChapters}'),
+                  InfoWidget(
+                    label: 'Số chương',
+                    value: '${book.totalChapters}',
+                  ),
                   const SizedBox(height: 4),
-                  _InfoRow(
+                  InfoWidget(
                     label: 'Chương vừa đọc',
                     value: _lastChapter > 0 ? '$_lastChapter' : '—',
                   ),
@@ -506,40 +511,6 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 88,
-          child: Text(
-            '$label:',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
