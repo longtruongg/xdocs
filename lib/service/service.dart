@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:xdocs/data/data_hook.dart';
 import 'package:xdocs/models/book.dart';
+import 'package:xdocs/service/local_service.dart';
+
 
 /// Your PC LAN IP (same Wi‑Fi as the phone).
 /// Not the gateway (192.168.100.1) and not the public WAN IP.
@@ -282,37 +284,91 @@ class OfflineDownloadResult {
 }
 
 class BookNotifierService extends AsyncNotifier<List<Book>> {
-  final DataHook _db = DataHook.instance;
+  BookLocalStorage get _local => ref.read(bookLocalStorage);
 
   @override
   FutureOr<List<Book>> build() => fetchBooks();
 
-  /// Network-first for the shelf so UI always gets API `author` + `cover_url`.
-  /// SQLite is offline fallback only.
+  /// Offline-first shelf:
+  /// 1) SQLite immediately (if any rows)
+  /// 2) background network soft-refresh
+  /// Empty DB → network, then save.
   ///
   /// Payload: `[{ id, title_zh, author, cover_url, total_chapters }, …]`
   Future<List<Book>> fetchBooks() async {
+    final cached = await _local.fetchBookLocal();
+    if (cached.isNotEmpty) {
+      unawaited(_softRefresh());
+      return cached;
+    }
+
     try {
-      final remote = await BookApi.fetchBooks();
-      // remote books already have author + coverUrl from Book.fromJson
-      await _db.saveBooks(remote);
-      return remote;
+      return await _fetchRemoteAndSave();
     } catch (e, st) {
-      // Wrong host/scheme lands here; old rows often have empty author/cover.
       // ignore: avoid_print
-      print(
-        'fetchBooks failed (${resolveApiBaseUrl()}/wm/books): $e\n$st',
-      );
-      final cached = await _db.getBooks();
-      if (cached.isNotEmpty) return cached;
+      print('fetchBooks failed (${resolveApiBaseUrl()}/wm/books): $e\n$st');
       rethrow;
     }
   }
 
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(fetchBooks);
+  Future<List<Book>> _fetchRemoteAndSave() async {
+    final remote = await BookApi.fetchBooks();
+    await _local.saveBooks(remote);
+    return remote;
   }
+
+  /// Quiet network update after showing cache (same idea as chapters).
+  Future<void> _softRefresh() async {
+    try {
+      final remote = await _fetchRemoteAndSave();
+      if (!ref.mounted) return;
+      final current = state.asData?.value;
+      if (current != null && _booksEqual(current, remote)) return;
+      state = AsyncData(remote);
+    } catch (_) {
+      // Keep showing SQLite cache.
+    }
+  }
+
+  /// Pull-to-refresh: always hit network, keep list visible (no blank loading).
+  Future<void> refresh() async {
+    try {
+      final remote = await _fetchRemoteAndSave();
+      if (!ref.mounted) return;
+      state = AsyncData(remote);
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('refresh books failed: $e\n$st');
+      if (!ref.mounted) return;
+      final current = state.asData?.value;
+      if (current != null && current.isNotEmpty) {
+        // Stay on cache; RefreshIndicator still completes.
+        return;
+      }
+      final cached = await _local.fetchBookLocal();
+      if (cached.isNotEmpty) {
+        state = AsyncData(cached);
+        return;
+      }
+      state = AsyncError(e, st);
+    }
+  }
+}
+
+bool _booksEqual(List<Book> a, List<Book> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    final x = a[i];
+    final y = b[i];
+    if (x.id != y.id ||
+        x.titleZh != y.titleZh ||
+        x.author != y.author ||
+        x.coverUrl != y.coverUrl ||
+        x.totalChapters != y.totalChapters) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// Thin HTTP client for Go `/wm/*` routes.
@@ -328,8 +384,10 @@ class BookApi {
     if (decoded is! List) {
       throw Exception('Expected a JSON list from /wm/books');
     }
-    final books =
-        decoded.map(_bookMap).map(Book.fromJson).toList(growable: false);
+    final books = decoded
+        .map(_bookMap)
+        .map(Book.fromJson)
+        .toList(growable: false);
     // ignore: avoid_print
     print(
       'parsed books: ${books.map((b) => '${b.titleZh}|author=${b.author}|cover=${b.coverUrl}').join('; ')}',

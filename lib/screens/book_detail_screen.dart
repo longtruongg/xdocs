@@ -5,10 +5,11 @@ import 'package:xdocs/service/service.dart';
 import '../models/book.dart';
 import 'book_list_screen.dart';
 import 'chapter_reader_screen.dart';
+import 'info_widget.dart';
 
 /// How many chapters per range tab (e.g. 1-50, 51-100, …).
 /// Larger pages = fewer chips = smoother open animation on big books.
-const int kChapterPageSize = 50;
+const int kChapterPageSize = 30;
 
 class BookDetailScreen extends ConsumerStatefulWidget {
   const BookDetailScreen({super.key, required this.book});
@@ -20,8 +21,9 @@ class BookDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
-  int _rangeIndex = 0;
+  final ValueNotifier<int> _rangeIndex = ValueNotifier<int>(0);
   bool _downloading = false;
+
   /// Last chapter index the user opened (0 = none yet).
   int _lastChapter = 0;
   Book get book => widget.book;
@@ -30,6 +32,12 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   void initState() {
     super.initState();
     _loadLastChapter();
+  }
+
+  @override
+  void dispose() {
+    _rangeIndex.dispose();
+    super.dispose();
   }
 
   Future<void> _loadLastChapter() async {
@@ -43,9 +51,9 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     return (total + kChapterPageSize - 1) ~/ kChapterPageSize;
   }
 
-  List<Chapter> _visibleChapters(List<Chapter> all) {
+  List<Chapter> _visibleChapters(List<Chapter> all, int rangeIndex) {
     if (all.isEmpty) return const <Chapter>[];
-    final start = _rangeIndex * kChapterPageSize;
+    final start = rangeIndex * kChapterPageSize;
     if (start >= all.length) return const <Chapter>[];
     final end = (start + kChapterPageSize).clamp(0, all.length).toInt();
     return all.sublist(start, end);
@@ -181,6 +189,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
         ],
       ),
       body: CustomScrollView(
+        shrinkWrap: true,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
@@ -254,16 +263,19 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _InfoRow(label: 'Tên truyện', value: book.title),
+                  InfoWidget(label: 'Tên truyện', value: book.title),
                   const SizedBox(height: 4),
-                  _InfoRow(
+                  InfoWidget(
                     label: 'Tác giả',
                     value: book.author.trim().isEmpty ? '—' : book.author,
                   ),
                   const SizedBox(height: 4),
-                  _InfoRow(label: 'Số chương', value: '${book.totalChapters}'),
+                  InfoWidget(
+                    label: 'Số chương',
+                    value: '${book.totalChapters}',
+                  ),
                   const SizedBox(height: 4),
-                  _InfoRow(
+                  InfoWidget(
                     label: 'Chương vừa đọc',
                     value: _lastChapter > 0 ? '$_lastChapter' : '—',
                   ),
@@ -359,157 +371,146 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
             data: (allChapters) {
               final total = allChapters.length;
               final ranges = _rangeCount(total);
-              if (_rangeIndex >= ranges && ranges > 0) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) setState(() => _rangeIndex = 0);
-                });
-              }
-              final chapters = _visibleChapters(allChapters);
 
               return [
-                if (ranges > 1)
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 44,
-                      child: ListView.separated(
-                        // Only build visible chips (1500 ch / 50 ≈ 30 ranges).
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        itemCount: ranges,
-                        separatorBuilder: (_, _) => const SizedBox(width: 8),
-                        itemBuilder: (context, i) {
-                          return ChoiceChip(
-                            label: Text(_rangeLabel(i, total)),
-                            selected: i == _rangeIndex,
-                            showCheckmark: false,
-                            onSelected: (_) {
-                              setState(() => _rangeIndex = i);
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                if (chapters.isEmpty)
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Chưa có chương nào.'),
-                    ),
-                  )
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final chapter = chapters[index];
-                      final chapterNumber = chapter.index;
-                      final isOffline = cached.contains(chapter.index);
-                      return ListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                        ),
-                        leading: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: scheme.primaryContainer,
-                          foregroundColor: scheme.onPrimaryContainer,
-                          child: Text(
-                            '$chapterNumber',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          chapter.displayTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          [
-                            if (chapter.status.isNotEmpty) chapter.status,
-                            if (isOffline) 'offline',
-                          ].join(' · '),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: isOffline
-                                ? scheme.primary
-                                : scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isOffline)
-                              Icon(
-                                Icons.offline_pin,
-                                size: 18,
-                                color: scheme.primary,
-                              ),
-                            Icon(Icons.chevron_right, color: scheme.outline),
-                          ],
-                        ),
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ChapterReaderScreen(
-                                book: book,
-                                chapter: chapter,
-                                chapterNumber: chapter.index,
-                                chapters: allChapters,
+                ValueListenableBuilder<int>(
+                  valueListenable: _rangeIndex,
+                  builder: (context, rangeIndex, _) {
+                    if (rangeIndex >= ranges && ranges > 0) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _rangeIndex.value = 0;
+                      });
+                    }
+                    final chapters = _visibleChapters(allChapters, rangeIndex);
+
+                    return SliverMainAxisGroup(
+                      slivers: [
+                        if (ranges > 1)
+                          SliverToBoxAdapter(
+                            child: SizedBox(
+                              height: 44,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  8,
+                                ),
+                                itemCount: ranges,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(width: 8),
+                                itemBuilder: (context, i) {
+                                  return ChoiceChip(
+                                    label: Text(_rangeLabel(i, total)),
+                                    selected: i == rangeIndex,
+                                    showCheckmark: false,
+                                    onSelected: (_) {
+                                      _rangeIndex.value = i;
+                                    },
+                                  );
+                                },
                               ),
                             ),
-                          );
-                          if (mounted) {
-                            ref.invalidate(
-                              cachedChapterIndexesProvider(book.id),
-                            );
-                            // Refresh "Chương vừa đọc" after leaving reader.
-                            await _loadLastChapter();
-                          }
-                        },
-                      );
-                    }, childCount: chapters.length),
-                  ),
-                const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                          ),
+                        if (chapters.isEmpty)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Text('Chưa có chương nào.'),
+                            ),
+                          )
+                        else
+                          SliverList(
+                            delegate: SliverChildBuilderDelegate((
+                              context,
+                              index,
+                            ) {
+                              final chapter = chapters[index];
+                              final chapterNumber = chapter.index;
+                              final isOffline = cached.contains(chapter.index);
+                              return ListTile(
+                                key: ValueKey(chapter.index),
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                leading: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: scheme.primaryContainer,
+                                  foregroundColor: scheme.onPrimaryContainer,
+                                  child: Text(
+                                    '$chapterNumber',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                title: Text(
+                                  chapter.displayTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  [
+                                    if (chapter.status.isNotEmpty)
+                                      chapter.status,
+                                    if (isOffline) 'offline',
+                                  ].join(' · '),
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: isOffline
+                                        ? scheme.primary
+                                        : scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isOffline)
+                                      Icon(
+                                        Icons.offline_pin,
+                                        size: 18,
+                                        color: scheme.primary,
+                                      ),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: scheme.outline,
+                                    ),
+                                  ],
+                                ),
+                                onTap: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => ChapterReaderScreen(
+                                        book: book,
+                                        chapter: chapter,
+                                        chapterNumber: chapter.index,
+                                        chapters: allChapters,
+                                      ),
+                                    ),
+                                  );
+                                  if (mounted) {
+                                    ref.invalidate(
+                                      cachedChapterIndexesProvider(book.id),
+                                    );
+                                    // Refresh "Chương vừa đọc" after leaving reader.
+                                    await _loadLastChapter();
+                                  }
+                                },
+                              );
+                            }, childCount: chapters.length),
+                          ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                      ],
+                    );
+                  },
+                ),
               ];
             },
           ),
         ],
       ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 88,
-          child: Text(
-            '$label:',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

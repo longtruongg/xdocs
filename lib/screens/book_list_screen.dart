@@ -1,95 +1,90 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:xdocs/drawers/app_drawer.dart';
+import 'package:xdocs/screens/book_detail_screen.dart';
 import 'package:xdocs/service/service.dart';
 
 import '../models/book.dart';
-import 'book_detail_screen.dart';
 
 // Cover images use [resolveCoverUrl] so relative backend paths still load.
 
 class BookListScreen extends ConsumerWidget {
   const BookListScreen({super.key});
 
+  Future<void> _onRefresh(WidgetRef ref) {
+    return ref.read(bookProvider.notifier).refresh();
+  }
+
+  void _openBook(BuildContext context, Book book) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 800),
+        pageBuilder: (context, _, _) => BookDetailScreen(book: book),
+        transitionsBuilder: (context, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final bookAsync = ref.watch(bookProvider);
-    int _selectedIndex = 0;
+
     return Scaffold(
       appBar: AppBar(title: const Text('X-Docs'), centerTitle: false),
       body: bookAsync.when(
         data: (books) {
-          if (books.isEmpty) {
-            return const Center(child: Text('Chưa có truyện nào.'));
-          }
+          // AlwaysScrollable so pull-to-refresh works on empty / short lists.
           return RefreshIndicator(
-            onRefresh: () => ref.read(bookProvider.notifier).refresh(),
-            child: ListView.separated(
-              itemCount: books.length,
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final book = books[index];
-                return _BookCard(
-                  book: book,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => BookDetailScreen(book: book),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+            onRefresh: () => _onRefresh(ref),
+            child: books.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 120),
+                      Center(child: Text('Chưa có truyện nào. Kéo xuống để tải.')),
+                    ],
+                  )
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: books.length,
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final book = books[index];
+                      return _BookCard(
+                        book: book,
+                        onTap: () => _openBook(context, book),
+                      );
+                    },
+                  ),
           );
         },
-        error: (err, stack) => Center(
-          child: Padding(
+        error: (err, stack) => RefreshIndicator(
+          onRefresh: () => _onRefresh(ref),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Error: $err', textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: () => ref.read(bookProvider.notifier).refresh(),
+            children: [
+              const SizedBox(height: 80),
+              Text('Error: $err', textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              Center(
+                child: FilledButton(
+                  onPressed: () => _onRefresh(ref),
                   child: const Text('Thử lại'),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
+        // Only first open with empty SQLite shows spinner; cache hits skip this.
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
-
       backgroundColor: theme.colorScheme.surface,
-      drawer: NavigationDrawer(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (int index) {
-          // Closes the drawer after selection
-          Navigator.pop(context);
-        },
-        children: const <Widget>[
-          Padding(
-            padding: EdgeInsets.fromLTRB(28, 16, 16, 10),
-            child: Text(
-              'Header',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-          NavigationDrawerDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: Text('Home'),
-          ),
-          NavigationDrawerDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: Text('Settings'),
-          ),
-        ],
-      ),
+      drawer: AppDrawer(),
     );
   }
 }
@@ -228,7 +223,8 @@ class _CoverThumb extends StatelessWidget {
                   'User-Agent':
                       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
                       '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                  'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                  'Accept':
+                      'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
                 },
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;
