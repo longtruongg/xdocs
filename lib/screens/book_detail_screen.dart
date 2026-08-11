@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:xdocs/service/service.dart';
 
 import '../models/book.dart';
@@ -10,6 +11,25 @@ import 'info_widget.dart';
 /// How many chapters per range tab (e.g. 1-50, 51-100, …).
 /// Larger pages = fewer chips = smoother open animation on big books.
 const int kChapterPageSize = 30;
+
+final chapterRageIndexProvider = StateProvider.family<int, String>(
+  (ref, bookId) => 0,
+);
+
+final lastChapterProvider = FutureProvider.family<int?, String>((
+  ref,
+  bookId,
+) async {
+  return await ChapterReaderScreen.loadLastChapter(bookId);
+});
+
+final translatedCountProvider = Provider.family<int, String>((ref, bookId) {
+  final chapterAsync = ref.watch(chaptersProvider(bookId));
+  return chapterAsync.maybeWhen(
+    data: (chap) => chap.where((c) => c.isDone).length,
+    orElse: () => 0,
+  );
+});
 
 class BookDetailScreen extends ConsumerStatefulWidget {
   const BookDetailScreen({super.key, required this.book});
@@ -26,6 +46,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
 
   /// Last chapter index the user opened (0 = none yet).
   int _lastChapter = 0;
+
   Book get book => widget.book;
 
   @override
@@ -66,51 +87,47 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     return '$start-$end';
   }
 
-  Future<void> _downloadTranslatedOffline(List<Chapter> chapters) async {
-    if (_downloading) return;
-
-    final translatedCount = chapters.where((c) => c.isDone).length;
-    if (translatedCount == 0) {
+  Future<void> _downloadTranslatedOffline(
+    BuildContext context,
+    WidgetRef ref,
+    List<Chapter> chapters,
+  ) async {
+    final translateCount = chapters.where((c) => c.isDone).length;
+    if (translateCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Chưa có chương nào status=done để tải.')),
       );
       return;
     }
-
-    setState(() => _downloading = true);
-
-    final progress = ValueNotifier<({int done, int total})>((
+    final process = ValueNotifier<({int done, int total})>((
       done: 0,
-      total: translatedCount,
+      total: translateCount,
     ));
-
-    if (!mounted) return;
-    showDialog<void>(
+    showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
         return PopScope(
           canPop: false,
           child: AlertDialog(
-            title: const Text('Tải offline (đã dịch)'),
+            title: const Text("Tải offline (đã dịch)"),
             content: ValueListenableBuilder<({int done, int total})>(
-              valueListenable: progress,
-              builder: (_, value, _) {
-                final t = value.total <= 0 ? 1 : value.total;
-                final ratio = (value.done / t).clamp(0.0, 1.0);
+              valueListenable: process,
+              builder: (_, val, _) {
+                final t = val.total <= 0 ? 1 : val.total;
+                final ratio = (val.done / t).clamp(0.0, 1.0);
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'Chỉ tải chương đã dịch (status=done).\n'
-                      '${value.done}/$t',
+                      'Chỉ tải chương đã dịch (status=done).\n${val.done}/$t',
                     ),
                     const SizedBox(height: 16),
                     LinearProgressIndicator(value: ratio),
                     const SizedBox(height: 8),
                     Text(
-                      'Nội dung lưu gzip BLOB trên máy — đọc offline sau.',
+                      'Nội dung lưu trên máy — đọc offline sau.',
                       style: Theme.of(ctx).textTheme.bodySmall,
                     ),
                   ],
@@ -121,37 +138,31 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
         );
       },
     );
-
     try {
       final result = await downloadTranslatedOffline(
         book.id,
         chapters: chapters,
-        onProgress: (d, t) {
-          progress.value = (done: d, total: t);
-        },
+        onProgress: (d, t) => process.value == (done: d, total: t),
       );
-
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
       ref.invalidate(cachedChapterIndexesProvider(book.id));
-
       final msg = result.failed == 0
-          ? 'Offline OK: ${result.totalReady}/${result.translatedTotal} '
-                'chương đã dịch (mới ${result.newlySaved}, có sẵn ${result.alreadyCached}).'
+          ? 'Offline OK: ${result.totalReady}/${result.translatedTotal} chương đã dịch.'
           : 'Lưu ${result.totalReady}/${result.translatedTotal}, lỗi ${result.failed}.';
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(msg)));
+      }
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Tải offline thất bại: $e')));
       }
     } finally {
-      progress.dispose();
-      if (mounted) setState(() => _downloading = false);
+      process.dispose();
     }
   }
 
@@ -159,37 +170,30 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+
     final chaptersAsync = ref.watch(chaptersProvider(book.id));
     final cachedAsync = ref.watch(cachedChapterIndexesProvider(book.id));
     final cached = cachedAsync.asData?.value ?? const <int>{};
-
+    final lastChapterAsyc = ref.watch(lastChapterProvider(book.id));
+    final translateCount = ref.watch(translatedCountProvider(book.id));
     return Scaffold(
       appBar: AppBar(
         title: Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          chaptersAsync.maybeWhen(
-            data: (chs) {
-              final n = chs.where((c) => c.isDone).length;
-              return IconButton(
-                tooltip: 'Tải $n chương đã dịch (offline)',
-                onPressed: _downloading || n == 0
-                    ? null
-                    : () => _downloadTranslatedOffline(chs),
-                icon: _downloading
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.download_for_offline_outlined),
-              );
-            },
-            orElse: () => const SizedBox.shrink(),
+          IconButton(
+            tooltip: 'Tải $translateCount chương đã dịch (offline)',
+            onPressed: translateCount == 0 || chaptersAsync.value == null
+                ? null
+                : () => _downloadTranslatedOffline(
+                    context,
+                    ref,
+                    chaptersAsync.value!,
+                  ),
+            icon: const Icon(Icons.download_for_offline_outlined),
           ),
         ],
       ),
       body: CustomScrollView(
-        shrinkWrap: true,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
@@ -277,25 +281,27 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                   const SizedBox(height: 4),
                   InfoWidget(
                     label: 'Chương vừa đọc',
-                    value: _lastChapter > 0 ? '$_lastChapter' : '—',
+                    value: lastChapterAsyc.maybeWhen(
+                      data: (val) => (val != null && val > 0) ? '$val' : '-',
+                      orElse: () => '-',
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  chaptersAsync.maybeWhen(
-                    data: (chs) {
-                      final translated = chs.where((c) => c.isDone).length;
-                      return FilledButton.tonalIcon(
-                        onPressed: _downloading || translated == 0
-                            ? null
-                            : () => _downloadTranslatedOffline(chs),
-                        icon: const Icon(Icons.download_for_offline_outlined),
-                        label: Text(
-                          translated == 0
-                              ? 'Chưa có chương đã dịch'
-                              : 'Tải $translated chương đã dịch (offline)',
-                        ),
-                      );
-                    },
-                    orElse: () => const SizedBox.shrink(),
+                  FilledButton.tonalIcon(
+                    onPressed:
+                        translateCount == 0 || chaptersAsync.value == null
+                        ? null
+                        : () => _downloadTranslatedOffline(
+                            context,
+                            ref,
+                            chaptersAsync.value!,
+                          ),
+                    icon: const Icon(Icons.download_for_offline_outlined),
+                    label: Text(
+                      translateCount == 0
+                          ? 'Chưa có chương đã dịch'
+                          : 'Tải $translateCount chương đã dịch (offline)',
+                    ),
                   ),
                 ],
               ),
@@ -371,140 +377,128 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
             data: (allChapters) {
               final total = allChapters.length;
               final ranges = _rangeCount(total);
-
+              final rangeIndexProvider = ref.watch(
+                chapterRageIndexProvider(book.id),
+              );
+              final rangeIndex = rangeIndexProvider >= ranges
+                  ? 0
+                  : rangeIndexProvider;
+              final chapters = _visibleChapters(allChapters, rangeIndex);
               return [
-                ValueListenableBuilder<int>(
-                  valueListenable: _rangeIndex,
-                  builder: (context, rangeIndex, _) {
-                    if (rangeIndex >= ranges && ranges > 0) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _rangeIndex.value = 0;
-                      });
-                    }
-                    final chapters = _visibleChapters(allChapters, rangeIndex);
-
-                    return SliverMainAxisGroup(
-                      slivers: [
-                        if (ranges > 1)
-                          SliverToBoxAdapter(
-                            child: SizedBox(
-                              height: 44,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  8,
+                SliverMainAxisGroup(
+                  slivers: [
+                    if (ranges > 1)
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 44,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 8),
+                            itemCount: ranges,
+                            itemBuilder: (context, i) {
+                              return ChoiceChip(
+                                label: Text(_rangeLabel(i, total)),
+                                selected: i == rangeIndex,
+                                showCheckmark: false,
+                                onSelected: (_) =>
+                                    ref
+                                            .read(
+                                              chapterRageIndexProvider(
+                                                book.id,
+                                              ).notifier,
+                                            )
+                                            .state =
+                                        i,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    if (chapters.isEmpty)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('Chưa có chương nào.'),
+                        ),
+                      )
+                    else
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final chapter = chapters[index];
+                          final chapterNumber = chapter.index;
+                          final isOffline = cached.contains(chapter.index);
+                          return ListTile(
+                            key: ValueKey(chapter.index),
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                            ),
+                            leading: CircleAvatar(
+                              radius: 16,
+                              backgroundColor: scheme.primaryContainer,
+                              foregroundColor: scheme.onPrimaryContainer,
+                              child: Text(
+                                '$chapterNumber',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
                                 ),
-                                itemCount: ranges,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(width: 8),
-                                itemBuilder: (context, i) {
-                                  return ChoiceChip(
-                                    label: Text(_rangeLabel(i, total)),
-                                    selected: i == rangeIndex,
-                                    showCheckmark: false,
-                                    onSelected: (_) {
-                                      _rangeIndex.value = i;
-                                    },
-                                  );
-                                },
                               ),
                             ),
-                          ),
-                        if (chapters.isEmpty)
-                          const SliverToBoxAdapter(
-                            child: Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Text('Chưa có chương nào.'),
+                            title: Text(
+                              chapter.displayTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          )
-                        else
-                          SliverList(
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              final chapter = chapters[index];
-                              final chapterNumber = chapter.index;
-                              final isOffline = cached.contains(chapter.index);
-                              return ListTile(
-                                key: ValueKey(chapter.index),
-                                dense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
+                            subtitle: Text(
+                              [
+                                if (chapter.status.isNotEmpty) chapter.status,
+                                if (isOffline) 'offline',
+                              ].join(' . '),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: isOffline
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
+                              ),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isOffline)
+                                  Icon(
+                                    Icons.offline_pin,
+                                    size: 18,
+                                    color: scheme.primary,
+                                  ),
+                                Icon(
+                                  Icons.chevron_right,
+                                  color: scheme.outline,
                                 ),
-                                leading: CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: scheme.primaryContainer,
-                                  foregroundColor: scheme.onPrimaryContainer,
-                                  child: Text(
-                                    '$chapterNumber',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                              ],
+                            ),
+                            onTap: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => ChapterReaderScreen(
+                                    book: book,
+                                    chapter: chapter,
+                                    chapterNumber: chapter.index,
+                                    chapters: allChapters,
                                   ),
                                 ),
-                                title: Text(
-                                  chapter.displayTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  [
-                                    if (chapter.status.isNotEmpty)
-                                      chapter.status,
-                                    if (isOffline) 'offline',
-                                  ].join(' · '),
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: isOffline
-                                        ? scheme.primary
-                                        : scheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (isOffline)
-                                      Icon(
-                                        Icons.offline_pin,
-                                        size: 18,
-                                        color: scheme.primary,
-                                      ),
-                                    Icon(
-                                      Icons.chevron_right,
-                                      color: scheme.outline,
-                                    ),
-                                  ],
-                                ),
-                                onTap: () async {
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => ChapterReaderScreen(
-                                        book: book,
-                                        chapter: chapter,
-                                        chapterNumber: chapter.index,
-                                        chapters: allChapters,
-                                      ),
-                                    ),
-                                  );
-                                  if (mounted) {
-                                    ref.invalidate(
-                                      cachedChapterIndexesProvider(book.id),
-                                    );
-                                    // Refresh "Chương vừa đọc" after leaving reader.
-                                    await _loadLastChapter();
-                                  }
-                                },
                               );
-                            }, childCount: chapters.length),
-                          ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                      ],
-                    );
-                  },
+                              ref.invalidate(
+                                cachedChapterIndexesProvider(book.id),
+                              );
+                              ref.invalidate(lastChapterProvider(book.id));
+                            },
+                          );
+                        }, childCount: chapters.length),
+                      ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                  ],
                 ),
               ];
             },
