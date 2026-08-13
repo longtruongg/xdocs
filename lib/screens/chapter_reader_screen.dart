@@ -5,6 +5,9 @@ import 'package:xdocs/service/service.dart';
 
 import '../models/book.dart';
 
+/// Pack this many `\n` lines into one [Text] when the body has no `\n\n`.
+const int _kLinesPerChunk = 6;
+
 /// Reading mode: loads chapter body after the route animation so the
 /// push transition stays smooth (no main-thread gunzip mid-slide).
 class ChapterReaderScreen extends ConsumerStatefulWidget {
@@ -52,12 +55,25 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
 
   bool _armedTransitionWait = false;
 
+  /// Translated chapters only — built once, not in [build].
+  late List<Chapter> _nav;
+  int _navPos = -1;
+
+  /// Paragraph / line-chunk widgets for the current body.
+  List<String> _paragraphs = const [];
+  int? _paragraphsForIndex;
+  String? _paragraphsSource;
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.chapterNumber;
-    // Persist as soon as the reader opens this chapter.
-    ChapterReaderScreen.saveLastChapter(widget.book.id, _currentIndex);
+    _rebuildNav();
+    // Don't hit disk during the push animation.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ChapterReaderScreen.saveLastChapter(widget.book.id, _currentIndex);
+    });
   }
 
   @override
@@ -88,71 +104,68 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
     }
 
     animation.addStatusListener(listener);
-    // Safety net if the status listener is skipped (rare).
     Future<void>.delayed(const Duration(milliseconds: 450), () {
       if (mounted && !_loadContent) setState(() => _loadContent = true);
     });
   }
 
-  /// Full TOC (for fallback metadata).
-  List<Chapter> _fullToc(List<Chapter>? fromProvider) {
-    if (widget.chapters.isNotEmpty) return widget.chapters;
-    if (fromProvider != null && fromProvider.isNotEmpty) return fromProvider;
-    return [widget.chapter];
-  }
-
-  /// Prev/Next only walks **translated** chapters (status=done), ~450 not 1541.
-  List<Chapter> _navToc(List<Chapter> full) {
+  void _rebuildNav() {
+    final full = widget.chapters.isNotEmpty
+        ? widget.chapters
+        : <Chapter>[widget.chapter];
     final done = full.where((c) => c.isDone).toList(growable: false);
-    if (done.isNotEmpty) return done;
-    return full;
+    _nav = done.isNotEmpty ? done : full;
+    _navPos = _nav.indexWhere((c) => c.index == _currentIndex);
   }
 
-  int _posInToc(List<Chapter> toc) {
-    return toc.indexWhere((c) => c.index == _currentIndex);
-  }
-
-  Chapter _metaFor(List<Chapter> full, List<Chapter> nav) {
-    for (final list in [nav, full]) {
-      final i = _posInToc(list);
-      if (i >= 0) return list[i];
-    }
+  Chapter get _meta {
+    if (_navPos >= 0) return _nav[_navPos];
     if (widget.chapter.index == _currentIndex) return widget.chapter;
     return Chapter(index: _currentIndex, titleZh: 'Chương $_currentIndex');
   }
 
+  void _ensureParagraphs(int chapterIndex, String body) {
+    if (_paragraphsForIndex == chapterIndex &&
+        identical(_paragraphsSource, body)) {
+      return;
+    }
+    _paragraphsForIndex = chapterIndex;
+    _paragraphsSource = body;
+    _paragraphs = _splitChapterBody(body);
+  }
+
   void _goTo(int index) {
     if (index == _currentIndex) return;
-    setState(() => _currentIndex = index);
+    setState(() {
+      _currentIndex = index;
+      _navPos = _nav.indexWhere((c) => c.index == index);
+      _paragraphs = const [];
+      _paragraphsForIndex = null;
+      _paragraphsSource = null;
+    });
     ChapterReaderScreen.saveLastChapter(widget.book.id, index);
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
   }
 
-  void _goPrev(List<Chapter> nav) {
-    final pos = _posInToc(nav);
-    if (pos > 0) _goTo(nav[pos - 1].index);
+  void _goPrev() {
+    if (_navPos > 0) _goTo(_nav[_navPos - 1].index);
   }
 
-  void _goNext(List<Chapter> nav) {
-    final pos = _posInToc(nav);
-    if (pos >= 0 && pos < nav.length - 1) _goTo(nav[pos + 1].index);
+  void _goNext() {
+    if (_navPos >= 0 && _navPos < _nav.length - 1) {
+      _goTo(_nav[_navPos + 1].index);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-
-    // Prefer TOC passed from detail — do not re-watch chaptersProvider on open
-    // (that was re-triggering soft-refresh + rebuild during the push animation).
-    final full = _fullToc(null);
-    final nav = _navToc(full);
-    final pos = _posInToc(nav);
-    final hasPrev = pos > 0;
-    final hasNext = pos >= 0 && pos < nav.length - 1;
-    final meta = _metaFor(full, nav);
+    final meta = _meta;
+    final hasPrev = _navPos > 0;
+    final hasNext = _navPos >= 0 && _navPos < _nav.length - 1;
 
     final args = ChapterDetailArgs(
       bookId: widget.book.id,
@@ -222,12 +235,16 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
               ? detail.contentVi
               : 'Chưa có nội dung cho chương này '
                     '(status: ${detail.status.isEmpty ? meta.status : detail.status}).';
+          _ensureParagraphs(_currentIndex, body);
+          final bodyStyle = theme.textTheme.bodyLarge?.copyWith(
+            height: 1.65,
+            color: scheme.onSurface,
+          );
 
-          // SelectionArea + Text is much cheaper than SelectableText for long bodies.
-          return SelectionArea(
-            child: ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
@@ -265,12 +282,18 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
                     ],
                   ],
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  body,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    height: 1.65,
-                    color: scheme.onSurface,
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(bottom: 24),
+                    itemCount: _paragraphs.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(_paragraphs[index], style: bodyStyle),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -288,7 +311,7 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: hasPrev ? () => _goPrev(nav) : null,
+                    onPressed: hasPrev ? _goPrev : null,
                     icon: const Icon(Icons.chevron_left),
                     label: const Text('Trước'),
                   ),
@@ -296,8 +319,8 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    pos >= 0
-                        ? '${pos + 1}/${nav.length}'
+                    _navPos >= 0
+                        ? '${_navPos + 1}/${_nav.length}'
                         : 'Ch. $_currentIndex',
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: scheme.onSurfaceVariant,
@@ -306,7 +329,7 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
                 ),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: hasNext ? () => _goNext(nav) : null,
+                    onPressed: hasNext ? _goNext : null,
                     icon: const Icon(Icons.chevron_right),
                     label: const Text('Sau'),
                     iconAlignment: IconAlignment.end,
@@ -319,4 +342,39 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
       ),
     );
   }
+}
+
+/// Prefer blank-line paragraphs. If the body is only single `\n`s, pack
+/// [_kLinesPerChunk] lines per widget so the list isn't 500 one-liners.
+List<String> _splitChapterBody(String body) {
+  final normalized = body.replaceAll('\r\n', '\n');
+  if (normalized.isEmpty) return const [''];
+
+  if (normalized.contains('\n\n')) {
+    final parts = <String>[];
+    for (final chunk in normalized.split(RegExp(r'\n{2,}'))) {
+      final trimmed = chunk.trim();
+      if (trimmed.isNotEmpty) parts.add(trimmed);
+    }
+    if (parts.isNotEmpty) return parts;
+  }
+
+  final lines = normalized.split('\n');
+  if (lines.length == 1) return lines;
+
+  final chunks = <String>[];
+  final buf = StringBuffer();
+  var packed = 0;
+  for (final line in lines) {
+    if (packed > 0) buf.writeln();
+    buf.write(line);
+    packed++;
+    if (packed >= _kLinesPerChunk) {
+      chunks.add(buf.toString());
+      buf.clear();
+      packed = 0;
+    }
+  }
+  if (packed > 0) chunks.add(buf.toString());
+  return chunks;
 }
