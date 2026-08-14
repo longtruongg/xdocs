@@ -27,6 +27,11 @@ class XDocsApp extends StatelessWidget {
       title: 'X-Docs',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        fontFamily: 'Fantas',
+        textTheme: const TextTheme(
+          displayMedium: TextStyle(fontWeight: FontWeight.w800),
+          bodyLarge: TextStyle(fontWeight: FontWeight.w600),
+        ),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF0E97EC),
           brightness: Brightness.light,

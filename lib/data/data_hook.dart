@@ -3,7 +3,8 @@ import 'dart:typed_data';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:xdocs/models/book.dart';
-
+import 'package:xdocs/service/service.dart';
+import 'package:http/http.dart'as http;
 /// Columns for list / metadata — never touch the heavy `content` BLOB.
 const List<String> _chapterMetaColumns = [
   'book_id',
