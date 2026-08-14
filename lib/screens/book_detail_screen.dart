@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:xdocs/screens/book_description.dart';
 import 'package:xdocs/service/service.dart';
 
 import '../models/book.dart';
-import 'book_list_screen.dart';
-import 'chapter_reader_screen.dart';
-import 'info_widget.dart';
+import "chapter_reader_screen.dart";
 
-/// How many chapters per range tab (e.g. 1-50, 51-100, …).
+// 'per range tab (e.g. 1-50, 51-100, …).
 /// Larger pages = fewer chips = smoother open animation on big books.
 const int kChapterPageSize = 30;
 
@@ -42,7 +41,6 @@ class BookDetailScreen extends ConsumerStatefulWidget {
 
 class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   final ValueNotifier<int> _rangeIndex = ValueNotifier<int>(0);
-  bool _downloading = false;
 
   /// Last chapter index the user opened (0 = none yet).
   int _lastChapter = 0;
@@ -142,7 +140,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
       final result = await downloadTranslatedOffline(
         book.id,
         chapters: chapters,
-        onProgress: (d, t) => process.value == (done: d, total: t),
+        onProgress: (d, t) => process.value = (done: d, total: t),
       );
       if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
       ref.invalidate(cachedChapterIndexesProvider(book.id));
@@ -174,7 +172,6 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
     final chaptersAsync = ref.watch(chaptersProvider(book.id));
     final cachedAsync = ref.watch(cachedChapterIndexesProvider(book.id));
     final cached = cachedAsync.asData?.value ?? const <int>{};
-    final lastChapterAsyc = ref.watch(lastChapterProvider(book.id));
     final translateCount = ref.watch(translatedCountProvider(book.id));
     return Scaffold(
       appBar: AppBar(
@@ -195,118 +192,7 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  BookCover(book: book),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          book.title,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          book.author.trim().isEmpty ? '—' : book.author,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          '${book.totalChapters} chương',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        if (cached.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'Offline: ${cached.length} chương đã lưu',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: scheme.primary,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Giới thiệu',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    book.intro.trim().isEmpty
-                        ? 'Chưa có giới thiệu.'
-                        : book.intro,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      height: 1.45,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  InfoWidget(label: 'Tên truyện', value: book.title),
-                  const SizedBox(height: 4),
-                  InfoWidget(
-                    label: 'Tác giả',
-                    value: book.author.trim().isEmpty ? '—' : book.author,
-                  ),
-                  const SizedBox(height: 4),
-                  InfoWidget(
-                    label: 'Số chương',
-                    value: '${book.totalChapters}',
-                  ),
-                  const SizedBox(height: 4),
-                  InfoWidget(
-                    label: 'Chương vừa đọc',
-                    value: lastChapterAsyc.maybeWhen(
-                      data: (val) => (val != null && val > 0) ? '$val' : '-',
-                      orElse: () => '-',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.tonalIcon(
-                    onPressed:
-                        translateCount == 0 || chaptersAsync.value == null
-                        ? null
-                        : () => _downloadTranslatedOffline(
-                            context,
-                            ref,
-                            chaptersAsync.value!,
-                          ),
-                    icon: const Icon(Icons.download_for_offline_outlined),
-                    label: Text(
-                      translateCount == 0
-                          ? 'Chưa có chương đã dịch'
-                          : 'Tải $translateCount chương đã dịch (offline)',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          SliverToBoxAdapter(child: BookDescription(book: book)),
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.only(top: 24),

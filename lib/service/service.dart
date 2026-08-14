@@ -9,10 +9,9 @@ import 'package:xdocs/data/data_hook.dart';
 import 'package:xdocs/models/book.dart';
 import 'package:xdocs/service/local_service.dart';
 
-
 /// Your PC LAN IP (same Wi‑Fi as the phone).
 /// Not the gateway (192.168.100.1) and not the public WAN IP.
-const String kLanHost = '192.168.100.26';
+const String kLanHost = '192.168.100.79';
 const int kApiPort = 8080;
 
 /// Go :8080 is plain HTTP — must stay false or mobile fetch fails → empty cache.

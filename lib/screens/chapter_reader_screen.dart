@@ -241,63 +241,66 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
             color: scheme.onSurface,
           );
 
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.book.title,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    if (detail.status.isNotEmpty)
+          return ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            itemCount: _paragraphs.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'status: ${detail.status}',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
+                        title,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    if (detail.hasContent) ...[
-                      const SizedBox(width: 8),
-                      Icon(Icons.offline_pin, size: 16, color: scheme.primary),
-                      const SizedBox(width: 4),
+                      const SizedBox(height: 8),
                       Text(
-                        'đã lưu máy',
-                        style: theme.textTheme.labelMedium?.copyWith(
+                        widget.book.title,
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           color: scheme.primary,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (detail.status.isNotEmpty)
+                            Text(
+                              'status: ${detail.status}',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          if (detail.hasContent) ...[
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.offline_pin,
+                              size: 16,
+                              color: scheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'đã lưu máy',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: scheme.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.only(bottom: 24),
-                    itemCount: _paragraphs.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Text(_paragraphs[index], style: bodyStyle),
-                      );
-                    },
                   ),
-                ),
-              ],
-            ),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(_paragraphs[index - 1], style: bodyStyle),
+              );
+            },
           );
         },
       ),
