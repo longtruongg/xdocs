@@ -42,27 +42,12 @@ class BookDetailScreen extends ConsumerStatefulWidget {
 class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   final ValueNotifier<int> _rangeIndex = ValueNotifier<int>(0);
 
-  /// Last chapter index the user opened (0 = none yet).
-  int _lastChapter = 0;
-
   Book get book => widget.book;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadLastChapter();
-  }
 
   @override
   void dispose() {
     _rangeIndex.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadLastChapter() async {
-    final index = await ChapterReaderScreen.loadLastChapter(book.id);
-    if (!mounted || index == null || index <= 0) return;
-    setState(() => _lastChapter = index);
   }
 
   int _rangeCount(int total) {
