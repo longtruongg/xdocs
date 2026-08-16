@@ -14,15 +14,12 @@ class BookDescription extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final lastChapter = ref.watch(lastChapterProvider(book.id)).maybeWhen(
-      data: (val) => (val != null && val > 0) ? '$val' : '-',
-      orElse: () => '-',
-    );
+    final lastChapter = ref
+        .watch(lastChapterProvider(book.id))
+        .maybeWhen(data: (val) => (val != null && val > 0) ? '$val' : '-', orElse: () => '-');
     final author = book.author.trim();
     final intro = book.intro.trim();
-    final metaStyle = theme.textTheme.bodyMedium?.copyWith(
-      color: scheme.onSurfaceVariant,
-    );
+    final metaStyle = theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant);
     final rows = <({String label, String value})>[
       (label: 'Tên truyện', value: book.title),
       (label: 'Tác giả', value: author.isEmpty ? '—' : author),
@@ -33,7 +30,7 @@ class BookDescription extends ConsumerWidget {
     const coverHeight = 150.0;
 
     return Padding(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -63,20 +60,13 @@ class BookDescription extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            'Giới thiệu',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text('Giới thiệu', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Text(
             intro.isEmpty ? 'Chưa có giới thiệu.' : intro,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              height: 1.45,
-              color: scheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.45, color: scheme.onSurfaceVariant),
           ),
+          const SizedBox(height: 12, child: Divider(height: 1)),
         ],
       ),
     );
