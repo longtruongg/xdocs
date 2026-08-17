@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xdocs/models/book.dart';
-import 'package:xdocs/screens/book_detail_screen.dart';
-
 import 'book_list_screen.dart';
+import 'chapter_reader_screen.dart';
 
 class BookDescription extends ConsumerWidget {
   final Book book;
@@ -64,6 +63,8 @@ class BookDescription extends ConsumerWidget {
           const SizedBox(height: 8),
           Text(
             intro.isEmpty ? 'Chưa có giới thiệu.' : intro,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(height: 1.45, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 12, child: Divider(height: 1)),

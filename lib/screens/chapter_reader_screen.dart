@@ -46,6 +46,10 @@ class ChapterReaderScreen extends ConsumerStatefulWidget {
       _ChapterReaderScreenState();
 }
 
+final lastChapterProvider = FutureProvider.family<int?, String>((ref, bookId) {
+  return ChapterReaderScreen.loadLastChapter(bookId);
+});
+
 class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
   late int _currentIndex;
   final _scrollController = ScrollController();
