@@ -1,51 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
-import 'package:xdocs/screens/book_description.dart';
+import 'package:xdocs/screens/widgets/widgets.dart';
 import 'package:xdocs/service/service.dart';
 
 import '../models/book.dart';
-import 'chapters_index.dart';
-
-const int kChapterPageSize = 30;
-
-final chapterRageIndexProvider = StateProvider.family<int, String>((ref, bookId) => 0);
 
 final translatedCountProvider = Provider.family<int, String>((ref, bookId) {
   final chapterAsync = ref.watch(chaptersProvider(bookId));
   return chapterAsync.maybeWhen(data: (chap) => chap.where((c) => c.isDone).length, orElse: () => 0);
 });
 
-int _rangeCount(int total) {
-  if (total == 0) return 0;
-  return (total + kChapterPageSize - 1) ~/ kChapterPageSize;
-}
-
-List<Chapter> _visibleChapters(List<Chapter> all, int rangeIndex) {
-  if (all.isEmpty) return const <Chapter>[];
-  final start = rangeIndex * kChapterPageSize;
-  if (start >= all.length) return const <Chapter>[];
-  final end = (start + kChapterPageSize).clamp(0, all.length).toInt();
-  return all.sublist(start, end);
-}
-
-String _rangeLabel(int index, int total) {
-  final start = index * kChapterPageSize + 1;
-  final endRaw = (index + 1) * kChapterPageSize;
-  final end = endRaw > total ? total : endRaw;
-  return '$start-$end';
-}
-
 class BookDetailScreen extends ConsumerWidget {
   const BookDetailScreen({super.key, required this.book});
 
   final Book book;
 
-  Future<void> _downloadTranslatedOffline(
-    BuildContext context,
-    WidgetRef ref,
-    List<Chapter> chapters,
-  ) async {
+  Future<void> _downloadTranslatedOffline(BuildContext context, WidgetRef ref, List<Chapter> chapters) async {
     final translateCount = chapters.where((c) => c.isDone).length;
     if (translateCount == 0) {
       ScaffoldMessenger.of(
@@ -114,10 +84,7 @@ class BookDetailScreen extends ConsumerWidget {
     final scheme = theme.colorScheme;
 
     final chaptersAsync = ref.watch(chaptersProvider(book.id));
-    final cachedAsync = ref.watch(cachedChapterIndexesProvider(book.id));
-    final cached = cachedAsync.asData?.value ?? const <int>{};
     final translateCount = ref.watch(translatedCountProvider(book.id));
-    final rangeIndexRaw = ref.watch(chapterRageIndexProvider(book.id));
 
     return Scaffold(
       appBar: AppBar(
@@ -181,57 +148,9 @@ class BookDetailScreen extends ConsumerWidget {
                 ),
               ),
             ],
-            data: (allChapters) {
-              final total = allChapters.length;
-              final ranges = _rangeCount(total);
-              final rangeIndex = rangeIndexRaw >= ranges ? 0 : rangeIndexRaw;
-              final chapters = _visibleChapters(allChapters, rangeIndex);
-              return [
-                SliverMainAxisGroup(
-                  slivers: [
-                    if (ranges > 1)
-                      SliverToBoxAdapter(
-                        child: SizedBox(
-                          height: 48,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            separatorBuilder: (_, _) => const SizedBox(width: 8),
-                            itemCount: ranges,
-                            itemBuilder: (context, i) {
-                              return ChoiceChip(
-                                label: Text(_rangeLabel(i, total)),
-                                selected: i == rangeIndex,
-                                showCheckmark: false,
-                                onSelected: (_) =>
-                                    ref.read(chapterRageIndexProvider(book.id).notifier).state = i,
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    if (chapters.isEmpty)
-                      const SliverToBoxAdapter(
-                        child: Padding(padding: EdgeInsets.all(24), child: Text('Chưa có chương nào.')),
-                      )
-                    else
-                      SliverList(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final chapter = chapters[index];
-                          return ChaptersIndex(
-                            key: ValueKey(chapter.index),
-                            book: book,
-                            allChapters: allChapters,
-                            chapter: chapter,
-                            isOffline: cached.contains(chapter.index),
-                          );
-                        }, childCount: chapters.length),
-                      ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                  ],
-                ),
-              ];
-            },
+            data: (allChapters) => [
+              ChapterRangeSlivers(book: book, allChapters: allChapters),
+            ],
           ),
         ],
       ),
