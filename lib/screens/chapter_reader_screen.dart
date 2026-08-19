@@ -15,7 +15,7 @@ class ChapterReaderScreen extends ConsumerStatefulWidget {
     super.key,
     required this.book,
     required this.chapter,
-    required this.chapterNumber,
+    // required this.chapterNumber,
     this.chapters = const <Chapter>[],
   });
 
@@ -23,7 +23,7 @@ class ChapterReaderScreen extends ConsumerStatefulWidget {
   final Chapter chapter;
 
   /// Backend chapter `index` (1-based) to open first.
-  final int chapterNumber;
+  // final int chapterNumber;
 
   /// Full TOC for prev/next (usually all chapters from book detail).
   final List<Chapter> chapters;
@@ -42,8 +42,7 @@ class ChapterReaderScreen extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<ChapterReaderScreen> createState() =>
-      _ChapterReaderScreenState();
+  ConsumerState<ChapterReaderScreen> createState() => _ChapterReaderScreenState();
 }
 
 final lastChapterProvider = FutureProvider.family<int?, String>((ref, bookId) {
@@ -71,7 +70,7 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.chapterNumber;
+    _currentIndex = widget.chapter.index;
     _rebuildNav();
     // Don't hit disk during the push animation.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -114,9 +113,7 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
   }
 
   void _rebuildNav() {
-    final full = widget.chapters.isNotEmpty
-        ? widget.chapters
-        : <Chapter>[widget.chapter];
+    final full = widget.chapters.isNotEmpty ? widget.chapters : <Chapter>[widget.chapter];
     final done = full.where((c) => c.isDone).toList(growable: false);
     _nav = done.isNotEmpty ? done : full;
     _navPos = _nav.indexWhere((c) => c.index == _currentIndex);
@@ -129,8 +126,7 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
   }
 
   void _ensureParagraphs(int chapterIndex, String body) {
-    if (_paragraphsForIndex == chapterIndex &&
-        identical(_paragraphsSource, body)) {
+    if (_paragraphsForIndex == chapterIndex && identical(_paragraphsSource, body)) {
       return;
     }
     _paragraphsForIndex = chapterIndex;
@@ -171,10 +167,7 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
     final hasPrev = _navPos > 0;
     final hasNext = _navPos >= 0 && _navPos < _nav.length - 1;
 
-    final args = ChapterDetailArgs(
-      bookId: widget.book.id,
-      index: _currentIndex,
-    );
+    final args = ChapterDetailArgs(bookId: widget.book.id, index: _currentIndex);
 
     // Only subscribe after transition so SQLite + gunzip don't freeze the slide.
     final AsyncValue<Chapter> detailAsync = _loadContent
@@ -183,17 +176,11 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Chương $_currentIndex',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text('Chương $_currentIndex', maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             tooltip: 'Tải lại',
-            onPressed: !_loadContent
-                ? null
-                : () => ref.invalidate(chapterDetailProvider(args)),
+            onPressed: !_loadContent ? null : () => ref.invalidate(chapterDetailProvider(args)),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -208,9 +195,7 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
               Text(
                 meta.displayTitle,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -232,18 +217,13 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
           ),
         ),
         data: (detail) {
-          final title = detail.displayTitle.isNotEmpty
-              ? detail.displayTitle
-              : meta.displayTitle;
+          final title = detail.displayTitle.isNotEmpty ? detail.displayTitle : meta.displayTitle;
           final body = detail.hasContent
               ? detail.contentVi
               : 'Chưa có nội dung cho chương này '
                     '(status: ${detail.status.isEmpty ? meta.status : detail.status}).';
           _ensureParagraphs(_currentIndex, body);
-          final bodyStyle = theme.textTheme.bodyLarge?.copyWith(
-            height: 1.65,
-            color: scheme.onSurface,
-          );
+          final bodyStyle = theme.textTheme.bodyLarge?.copyWith(height: 1.65, color: scheme.onSurface);
 
           return ListView.builder(
             controller: _scrollController,
@@ -256,43 +236,22 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                      Text(title, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
-                      Text(
-                        widget.book.title,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.primary,
-                        ),
-                      ),
+                      Text(widget.book.title, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.primary)),
                       const SizedBox(height: 4),
                       Row(
                         children: [
                           if (detail.status.isNotEmpty)
                             Text(
                               'status: ${detail.status}',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
+                              style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
                             ),
                           if (detail.hasContent) ...[
                             const SizedBox(width: 8),
-                            Icon(
-                              Icons.offline_pin,
-                              size: 16,
-                              color: scheme.primary,
-                            ),
+                            Icon(Icons.offline_pin, size: 16, color: scheme.primary),
                             const SizedBox(width: 4),
-                            Text(
-                              'đã lưu máy',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: scheme.primary,
-                              ),
-                            ),
+                            Text('đã lưu máy', style: theme.textTheme.labelMedium?.copyWith(color: scheme.primary)),
                           ],
                         ],
                       ),
@@ -326,12 +285,8 @@ class _ChapterReaderScreenState extends ConsumerState<ChapterReaderScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    _navPos >= 0
-                        ? '${_navPos + 1}/${_nav.length}'
-                        : 'Ch. $_currentIndex',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+                    _navPos >= 0 ? '${_navPos + 1}/${_nav.length}' : 'Ch. $_currentIndex',
+                    style: theme.textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
                   ),
                 ),
                 Expanded(

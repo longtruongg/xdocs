@@ -24,6 +24,7 @@ class BookDescription extends ConsumerWidget {
       (label: 'Tên truyện', value: book.title),
       (label: 'Tác giả', value: author.isEmpty ? '—' : author),
       (label: 'Danh sách chương', value: '${book.totalChapters}'),
+      (label: 'Đã lưu', value: '${book.chapterCount}'),
       (label: 'Chương vừa đọc', value: lastChapter),
     ];
 

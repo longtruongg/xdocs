@@ -22,8 +22,7 @@ class ChaptersIndex extends ConsumerWidget {
   Future<void> _openReader(BuildContext context, WidgetRef ref) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            ChapterReaderScreen(book: book, chapter: chapter, chapterNumber: chapter.index, chapters: allChapters),
+        builder: (_) => ChapterReaderScreen(book: book, chapter: chapter, chapters: allChapters),
       ),
     );
     ref.invalidate(lastChapterProvider(book.id));
