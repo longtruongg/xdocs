@@ -288,12 +288,15 @@ class BookNotifierService extends AsyncNotifier<List<Book>> {
   Future<List<Book>> fetchBooks() async {
     final cached = await _local.fetchBookLocal();
     if (cached.isNotEmpty) {
+      unawaited(_cacheMissingCovers());
       unawaited(_softRefresh());
       return cached;
     }
 
     try {
-      return await _fetchRemoteAndSave();
+      final remote = await _fetchRemoteAndSave();
+      unawaited(_cacheMissingCovers());
+      return remote;
     } catch (e, st) {
       // ignore: avoid_print
       print('fetchBooks failed (${resolveApiBaseUrl()}/wm/books): $e\n$st');
@@ -304,7 +307,36 @@ class BookNotifierService extends AsyncNotifier<List<Book>> {
   Future<List<Book>> _fetchRemoteAndSave() async {
     final remote = await BookApi.fetchBooks();
     await _local.saveBooks(remote);
-    return remote;
+    return DataHook.instance.getBooks();
+  }
+
+  /// Download cover images once into `books.content`; UI reads the BLOB only.
+  Future<void> _cacheMissingCovers() async {
+    final books = state.asData?.value ?? await DataHook.instance.getBooks();
+    final todo = books.where((b) => b.coverUrl.trim().isNotEmpty && !b.hasCoverImage).toList(growable: false);
+    if (todo.isEmpty) return;
+
+    var cursor = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = cursor;
+        if (i >= todo.length) return;
+        cursor = i + 1;
+        final book = todo[i];
+        try {
+          await BookApi.saveRawCoverBook(book.id, book.coverUrl);
+        } catch (_) {
+          // Keep placeholder; next refresh retries.
+        }
+      }
+    }
+
+    await Future.wait(List.generate(
+      todo.length < kOfflineDownloadConcurrency ? todo.length : kOfflineDownloadConcurrency,
+      (_) => worker(),
+    ));
+    if (!ref.mounted) return;
+    state = AsyncData(await DataHook.instance.getBooks());
   }
 
   /// Quiet network update after showing cache (same idea as chapters).
@@ -313,8 +345,10 @@ class BookNotifierService extends AsyncNotifier<List<Book>> {
       final remote = await _fetchRemoteAndSave();
       if (!ref.mounted) return;
       final current = state.asData?.value;
-      if (current != null && _booksEqual(current, remote)) return;
-      state = AsyncData(remote);
+      if (current == null || !_booksEqual(current, remote)) {
+        state = AsyncData(remote);
+      }
+      unawaited(_cacheMissingCovers());
     } catch (_) {
       // Keep showing SQLite cache.
     }
@@ -326,6 +360,7 @@ class BookNotifierService extends AsyncNotifier<List<Book>> {
       final remote = await _fetchRemoteAndSave();
       if (!ref.mounted) return;
       state = AsyncData(remote);
+      unawaited(_cacheMissingCovers());
     } catch (e, st) {
       // ignore: avoid_print
       print('refresh books failed: $e\n$st');
@@ -450,23 +485,36 @@ class BookApi {
     return response;
   }
 
-  static Future<Uint8List> saveRawCoverBook(String urlPath) async {
+  static const _coverHeaders = {
+    'User-Agent':
+        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+  };
+
+  /// Fetch cover bytes once and store them in `books.content`.
+  static Future<Uint8List> saveRawCoverBook(String bookId, String urlPath) async {
+    final url = resolveCoverUrl(urlPath);
+    if (url.isEmpty) {
+      throw Exception('Empty cover url');
+    }
+    final uri = Uri.parse(url);
     late final http.Response resp;
     try {
-      resp = await http.get(urlPath as Uri).timeout(const Duration(seconds: 8));
+      resp = await http.get(uri, headers: _coverHeaders).timeout(const Duration(seconds: 8));
     } on TimeoutException {
-      throw Exception(
-        'Timeout calling \n'
-        'Phone must reach your PC (kLanHost=$kLanHost, port $kApiPort).',
-      );
+      throw Exception('Timeout fetching cover $uri');
     } on SocketException catch (e) {
-      throw Exception('Cannot reach  ($e)');
+      throw Exception('Cannot reach $uri ($e)');
     }
-    final ok = resp.statusCode == 200 || resp.statusCode == 202;
-    if (!ok) {
-      throw Exception('HTTP ${resp.statusCode}  ${resp.body}');
+    if (resp.statusCode != 200) {
+      throw Exception('HTTP ${resp.statusCode} $uri');
     }
-    Uint8List encode = utf8.encode(resp.body);
-    return encode;
+    final bytes = resp.bodyBytes;
+    if (bytes.isEmpty) {
+      throw Exception('Empty cover body $uri');
+    }
+    await DataHook.instance.saveBookCover(bookId, bytes);
+    return bytes;
   }
 }
