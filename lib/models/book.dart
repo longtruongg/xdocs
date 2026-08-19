@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'chapter.dart';
 
 export 'chapter.dart';
@@ -14,6 +16,9 @@ class Book {
 
   /// Image URL from backend `cover_url` (absolute or relative to API host).
   final String coverUrl;
+
+  /// JPEG/WebP bytes from SQLite `books.content`. Null until first download.
+  final Uint8List? coverBytes;
   final String intro;
   final List<Chapter> chapters;
   final ColorSeed coverColor;
@@ -24,6 +29,7 @@ class Book {
     required this.author,
     required this.totalChapters,
     this.coverUrl = '',
+    this.coverBytes,
     this.intro = '',
     this.chapters = const <Chapter>[],
     this.coverColor = ColorSeed.indigo,
@@ -67,7 +73,9 @@ class Book {
   int get chapterCount =>
       chapters.isNotEmpty ? activeChapters.length : totalChapters;
 
-  bool get hasCover => coverUrl.trim().isNotEmpty;
+  bool get hasCoverImage => coverBytes != null && coverBytes!.isNotEmpty;
+
+  bool get hasCover => hasCoverImage || coverUrl.trim().isNotEmpty;
 
   /// UI number from backend `index` (1-based).
   int chapterNumberOf(Chapter chapter) => chapter.index;

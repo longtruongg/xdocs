@@ -1,66 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
-import 'package:xdocs/screens/book_description.dart';
+import 'package:xdocs/screens/widgets/widgets.dart';
 import 'package:xdocs/service/service.dart';
 
 import '../models/book.dart';
-import "chapter_reader_screen.dart";
-
-// 'per range tab (e.g. 1-50, 51-100, …).
-/// Larger pages = fewer chips = smoother open animation on big books.
-const int kChapterPageSize = 30;
-
-final chapterRageIndexProvider = StateProvider.family<int, String>((ref, bookId) => 0);
-
-final lastChapterProvider = FutureProvider.family<int?, String>((ref, bookId) async {
-  return await ChapterReaderScreen.loadLastChapter(bookId);
-});
 
 final translatedCountProvider = Provider.family<int, String>((ref, bookId) {
   final chapterAsync = ref.watch(chaptersProvider(bookId));
   return chapterAsync.maybeWhen(data: (chap) => chap.where((c) => c.isDone).length, orElse: () => 0);
 });
 
-class BookDetailScreen extends ConsumerStatefulWidget {
+class BookDetailScreen extends ConsumerWidget {
   const BookDetailScreen({super.key, required this.book});
 
   final Book book;
-
-  @override
-  ConsumerState<BookDetailScreen> createState() => _BookDetailScreenState();
-}
-
-class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
-  final ValueNotifier<int> _rangeIndex = ValueNotifier<int>(0);
-
-  Book get book => widget.book;
-
-  @override
-  void dispose() {
-    _rangeIndex.dispose();
-    super.dispose();
-  }
-
-  int _rangeCount(int total) {
-    if (total == 0) return 0;
-    return (total + kChapterPageSize - 1) ~/ kChapterPageSize;
-  }
-
-  List<Chapter> _visibleChapters(List<Chapter> all, int rangeIndex) {
-    if (all.isEmpty) return const <Chapter>[];
-    final start = rangeIndex * kChapterPageSize;
-    if (start >= all.length) return const <Chapter>[];
-    final end = (start + kChapterPageSize).clamp(0, all.length).toInt();
-    return all.sublist(start, end);
-  }
-
-  String _rangeLabel(int index, int total) {
-    final start = index * kChapterPageSize + 1;
-    final endRaw = (index + 1) * kChapterPageSize;
-    final end = endRaw > total ? total : endRaw;
-    return '$start-$end';
-  }
 
   Future<void> _downloadTranslatedOffline(BuildContext context, WidgetRef ref, List<Chapter> chapters) async {
     final translateCount = chapters.where((c) => c.isDone).length;
@@ -126,14 +79,13 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
     final chaptersAsync = ref.watch(chaptersProvider(book.id));
-    final cachedAsync = ref.watch(cachedChapterIndexesProvider(book.id));
-    final cached = cachedAsync.asData?.value ?? const <int>{};
     final translateCount = ref.watch(translatedCountProvider(book.id));
+
     return Scaffold(
       appBar: AppBar(
         title: Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -196,94 +148,9 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                 ),
               ),
             ],
-            data: (allChapters) {
-              final total = allChapters.length;
-              final ranges = _rangeCount(total);
-              final rangeIndexProvider = ref.watch(chapterRageIndexProvider(book.id));
-              final rangeIndex = rangeIndexProvider >= ranges ? 0 : rangeIndexProvider;
-              final chapters = _visibleChapters(allChapters, rangeIndex);
-              return [
-                SliverMainAxisGroup(
-                  slivers: [
-                    if (ranges > 1)
-                      SliverToBoxAdapter(
-                        child: SizedBox(
-                          height: 44,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                            separatorBuilder: (_, __) => const SizedBox(width: 8),
-                            itemCount: ranges,
-                            itemBuilder: (context, i) {
-                              return ChoiceChip(
-                                label: Text(_rangeLabel(i, total)),
-                                selected: i == rangeIndex,
-                                showCheckmark: false,
-                                onSelected: (_) => ref.read(chapterRageIndexProvider(book.id).notifier).state = i,
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    if (chapters.isEmpty)
-                      const SliverToBoxAdapter(
-                        child: Padding(padding: EdgeInsets.all(24), child: Text('Chưa có chương nào.')),
-                      )
-                    else
-                      SliverList(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final chapter = chapters[index];
-                          final chapterNumber = chapter.index;
-                          final isOffline = cached.contains(chapter.index);
-                          return ListTile(
-                            key: ValueKey(chapter.index),
-                            dense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                            leading: CircleAvatar(
-                              radius: 16,
-                              backgroundColor: scheme.primaryContainer,
-                              foregroundColor: scheme.onPrimaryContainer,
-                              child: Text(
-                                '$chapterNumber',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                            title: Text(chapter.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(
-                              [if (chapter.status.isNotEmpty) chapter.status, if (isOffline) 'offline'].join(' . '),
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: isOffline ? scheme.primary : scheme.onSurfaceVariant,
-                              ),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (isOffline) Icon(Icons.offline_pin, size: 18, color: scheme.primary),
-                                Icon(Icons.chevron_right, color: scheme.outline),
-                              ],
-                            ),
-                            onTap: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => ChapterReaderScreen(
-                                    book: book,
-                                    chapter: chapter,
-                                    chapterNumber: chapter.index,
-                                    chapters: allChapters,
-                                  ),
-                                ),
-                              );
-                              ref.invalidate(cachedChapterIndexesProvider(book.id));
-                              ref.invalidate(lastChapterProvider(book.id));
-                            },
-                          );
-                        }, childCount: chapters.length),
-                      ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                  ],
-                ),
-              ];
-            },
+            data: (allChapters) => [
+              ChapterRangeSlivers(book: book, allChapters: allChapters),
+            ],
           ),
         ],
       ),

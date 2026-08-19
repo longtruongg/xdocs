@@ -3,8 +3,6 @@ import 'dart:typed_data';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:xdocs/models/book.dart';
-import 'package:xdocs/service/service.dart';
-import 'package:http/http.dart'as http;
 /// Columns for list / metadata — never touch the heavy `content` BLOB.
 const List<String> _chapterMetaColumns = [
   'book_id',
@@ -112,27 +110,54 @@ class DataHook {
   // ── Books ──────────────────────────────────────────────────────────────
 
   Future<void> saveBook(Book book) async {
-    final db = await database;
-    await db.insert(
-      'books',
-      _bookToRow(book),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await saveBooks([book]);
   }
 
-  /// Persist GET /wm/books rows: author + cover_url + title_zh + total_chapters.
+  /// Persist GET /wm/books rows. Keeps an existing cover BLOB unless [cover_url] changed.
   Future<void> saveBooks(List<Book> books) async {
     if (books.isEmpty) return;
     final db = await database;
-    final batch = db.batch();
-    for (final book in books) {
-      batch.insert(
-        'books',
-        _bookToRow(book),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    }
-    await batch.commit(noResult: true);
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final book in books) {
+        batch.rawInsert(
+          '''
+          INSERT INTO books (id, title, author, cover_url, total_chapters, book_url, content, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, NULL, 1)
+          ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            author = excluded.author,
+            cover_url = excluded.cover_url,
+            total_chapters = excluded.total_chapters,
+            book_url = excluded.book_url,
+            is_active = 1,
+            content = CASE
+              WHEN books.cover_url = excluded.cover_url THEN books.content
+              ELSE NULL
+            END
+          ''',
+          [
+            book.id,
+            book.titleZh,
+            book.author,
+            book.coverUrl,
+            book.totalChapters,
+            book.coverUrl,
+          ],
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<void> saveBookCover(String bookId, Uint8List bytes) async {
+    final db = await database;
+    await db.update(
+      'books',
+      {'content': bytes},
+      where: 'id = ?',
+      whereArgs: [bookId],
+    );
   }
 
   Future<List<Book>> getBooks({bool activeOnly = true}) async {
@@ -147,6 +172,7 @@ class DataHook {
         'book_url',
         'total_chapters',
         'is_active',
+        'content',
       ],
       where: activeOnly ? 'is_active = ?' : null,
       whereArgs: activeOnly ? [1] : null,
@@ -167,6 +193,7 @@ class DataHook {
         'book_url',
         'total_chapters',
         'is_active',
+        'content',
       ],
       where: 'id = ?',
       whereArgs: [id],
@@ -352,20 +379,6 @@ class DataHook {
     return (result.first['c'] as int?) ?? 0;
   }
 
-  Map<String, Object?> _bookToRow(Book book) {
-    return {
-      'id': book.id,
-      'title': book.titleZh, // title_zh
-      'author': book.author, // author
-      'cover_url': book.coverUrl, // cover_url (image)
-      'total_chapters': book.totalChapters,
-      // Legacy column — keep in sync so old readers still work.
-      'book_url': book.coverUrl,
-      'content': null,
-      'is_active': 1,
-    };
-  }
-
   Book _bookFromRow(Map<String, Object?> row) {
     // Prefer cover_url; fall back to book_url for pre-v4 rows mid-migration.
     final cover = _rowString(row['cover_url']);
@@ -382,7 +395,14 @@ class DataHook {
           int.tryParse('${row['total_chapters'] ?? ''}') ??
           0,
       coverUrl: coverUrl,
+      coverBytes: _rowBlob(row['content']),
     );
+  }
+
+  static Uint8List? _rowBlob(Object? value) {
+    if (value is Uint8List) return value;
+    if (value is List<int>) return Uint8List.fromList(value);
+    return null;
   }
 
   static String _rowString(Object? value) {

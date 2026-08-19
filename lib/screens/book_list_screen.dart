@@ -6,8 +6,6 @@ import 'package:xdocs/service/service.dart';
 import '../models/book.dart';
 import 'book_detail_screen.dart';
 
-// Cover images use [resolveCoverUrl] so relative backend paths still load.
-
 class BookListScreen extends ConsumerWidget {
   const BookListScreen({super.key});
 
@@ -195,7 +193,7 @@ class _BookCard extends StatelessWidget {
   }
 }
 
-class _CoverThumb extends StatelessWidget {
+class _CoverThumb extends ConsumerWidget {
   const _CoverThumb({
     required this.book,
     required this.width,
@@ -207,13 +205,19 @@ class _CoverThumb extends StatelessWidget {
   final double height;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(8);
-    final cover = resolveCoverUrl(
-      book.coverUrl,
-      // "https://img22.ixdzs.com/96/96/96960e9fa88b658cad4e65e283fa4163.jpg",
+    final bytes = ref.watch(bookProvider).maybeWhen(
+      data: (books) {
+        for (final b in books) {
+          if (b.id == book.id) return b.coverBytes;
+        }
+        return book.coverBytes;
+      },
+      orElse: () => book.coverBytes,
     );
+    final hasBytes = bytes != null && bytes.isNotEmpty;
 
     return Hero(
       tag: "book_cover ${book.id}",
@@ -222,63 +226,32 @@ class _CoverThumb extends StatelessWidget {
         child: SizedBox(
           width: width,
           height: height,
-          child: cover.isNotEmpty
-              ? Image.network(
-                  cover,
+          child: hasBytes
+              ? Image.memory(
+                  bytes,
                   width: width,
                   height: height,
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
                   filterQuality: FilterQuality.medium,
-                  // Some CDNs reject empty / Dart default UA.
-                  headers: const {
-                    'User-Agent':
-                        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-                        '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                    'Accept':
-                        'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-                  },
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return _CoverPlaceholder(
-                      width: width,
-                      height: height,
-                      colors: _coverColors(book.coverColor),
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          value: progress.expectedTotalBytes != null
-                              ? progress.cumulativeBytesLoaded /
-                                    progress.expectedTotalBytes!
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    // ignore: avoid_print
-                    print('cover load failed url=$cover error=$error');
-                    return _CoverPlaceholder(
-                      width: width,
-                      height: height,
-                      colors: _coverColors(book.coverColor),
-                      child: Icon(
-                        Icons.broken_image_outlined,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    );
-                  },
                 )
               : _CoverPlaceholder(
                   width: width,
                   height: height,
                   colors: _coverColors(book.coverColor),
-                  child: Icon(
-                    Icons.menu_book_rounded,
-                    color: scheme.onPrimaryContainer,
-                  ),
+                  child: book.coverUrl.trim().isNotEmpty
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: scheme.onPrimaryContainer,
+                          ),
+                        )
+                      : Icon(
+                          Icons.menu_book_rounded,
+                          color: scheme.onPrimaryContainer,
+                        ),
                 ),
         ),
       ),
